@@ -1,51 +1,60 @@
+
 var express = require('express');
 var morgan = require('morgan');
 var mongoose = require('mongoose');
 var bodyParser = require('body-parser');
 var ejs = require('ejs');
-var ejsEngine = require('ejs-mate');
+var engine = require('ejs-mate');
+var session = require('express-session');
+var cookieParser = require('cookie-parser');
+var flash = require('express-flash');
+var MongoStore = require('connect-mongo/es5')(session);
+var passport = require('passport');
 
+
+var secret = require('./config/secret');
 var User = require('./models/user');
 
 var app = express();
 
-mongoose.connect('mongodb://root:root@ds029486.mlab.com:29486/ecommerce', function(err) {
-    if (err) {
-        console.log(err);
-    } else {
-        console.log('Nicee!!');
-    }
+mongoose.connect(secret.database, function(err) {
+  if (err) {
+    console.log(err);
+  } else {
+    console.log("Connected to the database");
+  }
 });
 
-//Midleware
+// Middleware
+app.use(express.static(__dirname + '/public'));
 app.use(morgan('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.engine('ejs', ejsEngine);
+app.use(cookieParser());
+app.use(session({
+  resave: true,
+  saveUninitialized: true,
+  secret: secret.secretKey,
+  store: new MongoStore({ url: secret.database, autoReconnect: true})
+}));
+app.use(flash());
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(function(req, res, next) {
+  res.locals.user = req.user;
+  next();
+});
+
+app.engine('ejs', engine);
 app.set('view engine', 'ejs');
 
-app.post('/create-user', function(req, res) {
-    var user = new User();
+var mainRoutes = require('./routes/main');
+var userRoutes = require('./routes/user');
 
-    user.profile.name = req.body.name;
-    user.password = req.body.password;
-    user.email = req.body.email;
+app.use(mainRoutes);
+app.use(userRoutes);
 
-    user.save(function(error) {
-        if (error) return next(error);
-        res.json('Successfully created a new user.');
-    });
-});
-
-app.get('/', function(req, res) {
-    res.render('home');
-});
-
-app.get('/about', function(req, res) {
-    res.render('about');
-});
-
-app.listen(3000, function(err) {
-    if (err) throw err;
-    console.log("server is running on port 3000");
+app.listen(secret.port, function(err) {
+  if (err) throw err;
+  console.log("Server is Running on port " + secret.port);
 });
